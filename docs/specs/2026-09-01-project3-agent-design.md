@@ -16,7 +16,7 @@
 
 | # | 决策点 | 结论 |
 |---|---|---|
-| Q1 | 核心演示场景 | 「查合肥未来 7 天天气，画温度柱状图，算平均温度，写出行建议」——四步三轮 ReAct 循环 |
+| Q1 | 核心演示场景 | 「查合肥未来 4 天天气，画温度柱状图，算平均温度，写出行建议」——四步三轮 ReAct 循环（**4 天**：高德免费天气 API extensions=all 只返回今天+未来 3 天共 4 条，实测文档约束） |
 | Q2 | 天气数据源 | 高德天气 API（真实数据，key 走 `.env`，与项目 2 同模式） |
 | Q3 | Agent 实现路线 | 手搭 LangGraph StateGraph（与项目 2 的 create_agent 差异化，简历深度靠它） |
 | Q4 | 链路面板形态 | 步骤时间线（非树形）：状态徽章实时点亮、工具步骤可展开、图表内嵌渲染 |
@@ -45,7 +45,7 @@
 
 ### 4.1 图结构（LangGraph StateGraph，手搭）
 
-- **状态**：`AgentState(TypedDict)`，核心字段 `messages: list`（LangGraph 惯例，HumanMessage/ToolMessage/AIMessage）
+- **状态**：`MessagesState`（LangGraph 内置 TypedDict：`messages: Annotated[list, add_messages]`，add_messages 是 reducer——同名消息按 id 去重，这就是多轮上下文的基础）
 - **agent 节点**：LLM（deepseek-chat，项目 2 同配置）读状态 messages 输出 AI 消息——带 tool_calls 或最终回答
 - **tools 节点**：按 tool_calls 逐个执行（本项目工具都快，串行够用），结果以 ToolMessage 追加
 - **条件边**：agent 输出最后一条消息有 tool_calls → tools 节点；否则 → END
@@ -55,8 +55,8 @@
 
 | 工具 | 签名 | 关键实现 |
 |---|---|---|
-| `weather_query` | `(city: str, days: int) -> str` | httpx 调高德天气 API，返回结构化 JSON 文本；key 走 `.env`；接口失败**返回错误文本**让模型知道（不是抛异常——ReAct 的观察环节需要"知道失败"） |
-| `chart_generate` | `(chart_type, title, categories: list, series: list[dict]) -> str` | 确定性 Python 代码构造完整 ECharts option 并 JSON 序列化返回；纯函数无 LLM 参与；返回内容带 `__CHART__` 前缀标记，便于图执行层识别为图表事件 |
+| `weather_query` | `(city: str, days: int) -> str` | httpx 调高德天气 API（`/v3/weather/weatherInfo?city=&extensions=all`），返回结构化 JSON 文本；days 超出 1-4 时**钳制为 4**（高德免费版最多今天+未来 3 天）；key 走 `.env`；接口失败**返回错误文本**让模型知道（不是抛异常——ReAct 的观察环节需要"知道失败"） |
+| `chart_generate` | `(chart_type, title, categories: list, series: list[dict]) -> str` | 确定性 Python 代码构造完整 ECharts option 并 JSON 序列化返回；纯函数无 LLM 参与；trace 层按工具名识别图表事件（见 4.3，不需要返回值里埋标记） |
 | `calculator` | `(expression: str) -> str` | `ast` 白名单解析（四则运算），**绝不直接 eval**（安全，面试点）；非法表达式返回错误文本 |
 
 ### 4.3 trace 事件协议（SSE 单流）
@@ -65,35 +65,36 @@
 
 | 事件 | data | 含义 |
 |---|---|---|
-| `start` | `{thread_id}` | 握手 |
+| `start` | `{}` | 握手（v1 无历史持久化，不需要 thread_id） |
 | `step_start` | `{step_idx, type: "thinking"\|"tool"}` | 一个步骤开始（时间线新条目） |
 | `thinking` | `{text}` | agent 节点 LLM 思考文本流式 |
 | `tool_call` | `{tool_name, args}` | 模型决定调用工具 |
 | `tool_result` | `{tool_name, result, ok}` | 工具执行结果（ok=false 即错误观察） |
 | `chart` | `{option}` | chart_generate 产物，前端直接 setOption |
 | `step_end` | `{step_idx}` | 步骤结束 |
-| `answer_token` | `{text}` | 最终回答流式 |
-| `done` | `{thread_id}` | 结束 |
+| `answer` | `{text}` | 最终回答全文（非流式——面板是主角，思考流式、回答整段） |
+| `done` | `{}` | 结束 |
+| `error` | `{detail}` | 异常兜底（GraphRecursionError 等），前端提示用户 |
 
-实现方式：`graph.astream(stream_mode=["updates", "messages"])` 双流——updates 给节点级步骤边界，messages 给 token 级思考流；工具结果在 tools 节点内解析识别 `__CHART__` 前缀转成 chart 事件。
+实现方式：`graph.astream_events(version="v2")`（项目 2 已验证姿势）——`on_chat_model_stream` 给思考 token 流；`on_chat_model_end` 的 `tool_calls` 给 tool_call 步骤边界、`on_tool_end` 给工具结果；节点归属用事件 `metadata["langgraph_node"]` 识别；chart 事件 = trace 层检测到工具名为 `chart_generate` 且结果合法时把 JSON 解析成 option 转发。
 
 ## 5. 前端设计
 
 ### 5.1 布局
 
-- **左区（聊天区）**：项目 2 同款——消息列表 + 输入框 + 流式回答逐字追加；"新对话"按钮重置线程
+- **左区（聊天区）**：消息列表 + 输入框；回答由 `answer` 事件整段渲染（v1 回答非流式，思考流式——面板是主角）；"新对话"按钮重置会话
 - **右区（Agent 链路面板）**：本次差异化核心，卡片式步骤时间线
 
 ### 5.2 链路面板状态机
 
-步骤条目模型：`{id, type: thinking|tool, status: running|done|error, title, detail?, chart_option?}`
+步骤条目模型（前端 TS `TraceStep`）：`{id, type: thinking|tool, status: running|done|error, title, detail?, args?, ok?, chartOption?}`
 
 - `step_start` → 新增条目，status=running（思考类显示三点动画，工具类显示齿轮）
 - `thinking` → 追加到当前思考条目的 detail
 - `tool_call` → 工具条目显示参数（可折叠的 JSON 预览）
 - `tool_result` → 工具条目 status=done（ok=false 标红）；展开看返回内容
 - `chart` → 工具条目下内嵌渲染 ECharts（复用你大屏经验：setOption + resize 监听）
-- `step_end` → 条目定稿；`done` → 面板整体完成态
+- `step_end` → 条目定稿；`answer` → 聊天区渲染最终回答；`done` → 面板整体完成态
 
 SSE 消费用 fetch + ReadableStream 手动解析（POST 无法用 EventSource，项目 2 已验证同款姿势）。
 
@@ -111,12 +112,12 @@ SSE 消费用 fetch + ReadableStream 手动解析（POST 无法用 EventSource�
 ### 7.1 测试（pytest，项目 2 模式）
 
 - **工具单测**：chart_generate（option 结构断言：有 title/xAxis/series 且数值对）、calculator（四则运算 + 非法表达式拒绝 + `__import__` 等注入尝试被拒）、weather_query（httpx mock 高德响应，不真打接口）
-- **图集成测试**：真实 LLM 跑一条最短指令（"算一下 23 加 5"），断言事件序列出现 tool_call/calculator/answer_token 且最终答案含 28
+- **图集成测试**：真实 LLM 跑一条最短指令（"算一下 23 加 5"），断言工具 calculator 被调用且最终答案含 28
 - **SSE 契约测试**：httpx 流式消费，断言事件序列完整（start→…→done）
 
 ### 7.2 验收清单（对齐学习计划）
 
-1. 一句话指令「查合肥未来 7 天天气，画温度柱状图，算平均温度，写出行建议」→ 面板看到 4 步、3 种工具、ReAct 循环 3 轮 ✅
+1. 一句话指令「查合肥未来 4 天天气，画温度柱状图，算平均温度，写出行建议」→ 面板看到 4 步、3 种工具、ReAct 循环 3 轮 ✅
 2. 柱状图正确渲染在面板内（ECharts option 由 chart_generate 确定性生成）✅
 3. 链路面板实时点亮（思考动画→工具齿轮→结果→图表），截图/GIF 存档 ✅
 4. 演示录屏 GIF 进 README；docker compose up 一键启动 ✅
