@@ -32,7 +32,7 @@
 **Interfaces:**
 - Produces: `main.py` 的 FastAPI app（Task 4 在它上面加 `/api/chat/stream`）；`backend/.venv`（所有 pytest 都用它跑）；前端 5173 端口 proxy `/api` → 8000
 
-- [ ] **Step 1: 创建后端 venv 并装依赖**
+- [x] **Step 1: 创建后端 venv 并装依赖**
 
 `requirements.txt` 直接复制项目 2 的（`D:\study\project2-rag\backend\requirements.txt`，版本锚点一致），另加 `httpx`（若没有）。PowerShell 在 `backend/` 下：
 
@@ -40,7 +40,7 @@
 cd backend; py -3.14 -m venv .venv; .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-- [ ] **Step 2: 写 hello 版 main.py**
+- [x] **Step 2: 写 hello 版 main.py**
 
 ```python
 from fastapi import FastAPI
@@ -53,7 +53,7 @@ def health():
     return {"status": "ok"}
 ```
 
-- [ ] **Step 3: 验证后端能起**
+- [x] **Step 3: 验证后端能起**
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
@@ -61,7 +61,7 @@ def health():
 
 浏览器/curl 访问 `http://localhost:8000/health` → `{"status":"ok"}` 后 Ctrl+C 停掉。
 
-- [ ] **Step 4: 前端脚手架**
+- [x] **Step 4: 前端脚手架**
 
 在项目根目录（PowerShell）：
 
@@ -80,7 +80,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 5: .env.example 与 .gitignore**
+- [x] **Step 5: .env.example 与 .gitignore**
 
 `.env.example`（根目录，注意每行尾换行）：
 
@@ -91,7 +91,7 @@ AMAP_API_KEY=在这里填你的高德Web服务key
 
 `.gitignore` 复制项目 2 的（含 `.env`、`.venv/`、`node_modules/`、`dist/`、`__pycache__/`）。
 
-- [ ] **Step 6: 验证 + commit**
+- [x] **Step 6: 验证 + commit**
 
 ```powershell
 cd frontend; npm run build
@@ -119,7 +119,7 @@ git add -A; git commit -m "chore: 项目脚手架（后端 hello + 前端 vite +
   - `TOOLS = [weather_query, chart_generate, calculator]`
 - 约定：weather_query 返回 `json.dumps({"city":..., "forecasts":[{date,week,dayweather,nightweather,daytemp,nighttemp}...]}, ensure_ascii=False)`，days 钳制 1-4；chart_generate 返回完整 ECharts option 的 JSON 字符串（含 title/xAxis/yAxis/series）；calculator 成功返回 `"结果：{值}"`；**所有失败返回 `"XX失败：原因"` 开头的文本，绝不抛异常**
 
-- [ ] **Step 1: 写测试**（`backend/tests/test_tools.py`，全给）
+- [x] **Step 1: 写测试**（`backend/tests/test_tools.py`，全给）
 
 ```python
 import json
@@ -204,7 +204,7 @@ class TestWeatherQuery:
         assert r.startswith("天气查询失败")
 ```
 
-- [ ] **Step 2: 跑测试确认红**
+- [x] **Step 2: 跑测试确认红**
 
 ```powershell
 cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_tools.py -v
@@ -212,7 +212,7 @@ cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_tools.py -v
 
 Expected: FAIL（`ModuleNotFoundError: agent.tools` 或 import 错误——红得越早越好）
 
-- [ ] **Step 3: 自己写 `agent/tools.py`**（教学模式：逐行讲解时写）
+- [x] **Step 3: 自己写 `agent/tools.py`**（教学模式：逐行讲解时写）
 
 要点（接口见上）：
 - 三个函数都用 `from langchain_core.tools import tool` 的 `@tool` 装饰，docstring 写清用途与参数（模型靠它决策）
@@ -221,15 +221,15 @@ Expected: FAIL（`ModuleNotFoundError: agent.tools` 或 import 错误——红�
 - `calculator`：**用 `ast.parse` + 白名单节点类型**（Expression/BinOp/UnaryOp/Constant + 四则运算符），自己遍历节点求值；解析或计算异常返回 `f"计算失败：{e}"`。**绝不 eval**
 - `TOOLS = [weather_query, chart_generate, calculator]`
 
-- [ ] **Step 4: 跑测试确认绿**
+- [x] **Step 4: 跑测试确认绿**
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_tools.py -v
 ```
 
-Expected: 10 passed
+Expected: 8 passed
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 git add backend/agent backend/tests/test_tools.py; git commit -m "feat: 三工具（weather_query/chart_generate/calculator）+ 单测"
@@ -249,7 +249,7 @@ git add backend/agent backend/tests/test_tools.py; git commit -m "feat: 三工�
   - `build_graph()` — 返回 compiled graph，含节点 `agent`、`tools`
   - `graph.invoke({"messages": [("user", question)]}, config={"recursion_limit": 15})` 返回 `{"messages": [...]}`，最后一条 AI 消息即最终回答
 
-- [ ] **Step 1: 写集成测试**（`backend/tests/test_graph.py`，全给——真实 LLM，跑一次约 10 秒）
+- [x] **Step 1: 写集成测试**（`backend/tests/test_graph.py`，全给——真实 LLM，跑一次约 10 秒）
 
 ```python
 from agent.graph import build_graph
@@ -279,11 +279,11 @@ def test_no_tool_question_answered_directly():
     assert len(result["messages"]) >= 2
 ```
 
-- [ ] **Step 2: 跑测试确认红**
+- [x] **Step 2: 跑测试确认红**
 
 Expected: FAIL（`ModuleNotFoundError: agent.graph`）
 
-- [ ] **Step 3: 自己写 `agent/graph.py`**（核心 Task，讲解重点：图结构/状态流/ReAct 循环）
+- [x] **Step 3: 自己写 `agent/graph.py`**（核心 Task，讲解重点：图结构/状态流/ReAct 循环）
 
 结构（参考 LangGraph 官方 Build a ReAct agent 教程 + 黑马 Agent-04）：
 
@@ -316,11 +316,11 @@ def build_graph():
 
 教学点：`MessagesState` 内置 `messages: Annotated[list, add_messages]`（add_messages 是 reducer——同名消息按 id 去重，这就是"多轮对话状态"的基础）；`bind_tools` 把工具 schema 交给模型（Function Calling）；tools 节点返回 ToolMessage 回写、条件边看 `tool_calls` 决定循环还是结束；`recursion_limit` 在 invoke 的 config 里传（15）。
 
-- [ ] **Step 4: 跑测试确认绿**
+- [x] **Step 4: 跑测试确认绿**
 
 Expected: 2 passed（约 20 秒，真实 LLM 调用）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 git add backend/agent/graph.py backend/tests/test_graph.py; git commit -m "feat: 手搭 StateGraph ReAct（agent+tools 条件循环）"
@@ -341,7 +341,7 @@ git add backend/agent/graph.py backend/tests/test_graph.py; git commit -m "feat:
   - `async def stream_trace(question: str)` — async generator，逐个 yield `(event, data)` 元组，顺序：`("start",{})` → 若干 `("step_start",{step_idx,type})` / `("thinking",{text})` / `("tool_call",{tool_name,args})` / `("tool_result",{tool_name,result,ok})` / `("chart",{option})` / `("step_end",{step_idx})` → `("answer",{text})` → `("done",{})`；异常时 yield `("error",{"detail":...})`
   - `main.py`：`POST /api/chat/stream`，请求体 `{"question": str}`，SSE 帧格式 `event: 事件名\ndata: {json}\n\n`
 
-- [ ] **Step 1: 写契约测试**（`backend/tests/test_chat_stream.py`，全给）
+- [x] **Step 1: 写契约测试**（`backend/tests/test_chat_stream.py`，全给）
 
 ```python
 import asyncio
@@ -392,11 +392,11 @@ async def _collect():
     assert len(step_starts) == len(step_ends)
 ```
 
-- [ ] **Step 2: 跑测试确认红**
+- [x] **Step 2: 跑测试确认红**
 
 Expected: FAIL（接口不存在，404 或断言失败）
 
-- [ ] **Step 3: 自己写 `agent/trace.py`**（本 Task 最难，讲解重点：astream_events 事件语义）
+- [x] **Step 3: 自己写 `agent/trace.py`**（本 Task 最难，讲解重点：astream_events 事件语义）
 
 要点：
 - `async for ev in build_graph().astream_events({"messages": [("user", question)]}, config={"recursion_limit": 15}, version="v2")`
@@ -407,7 +407,7 @@ Expected: FAIL（接口不存在，404 或断言失败）
   - `on_tool_end`：`output = ev["data"]["output"]`（ToolMessage）→ `("tool_result", {"tool_name": ev["name"], "result": output.content, "ok": not output.content.startswith("失败")})`；若 `ev["name"] == "chart_generate"` 且 ok → `json.loads(output.content)` 后 `("chart", {"option": ...})`；最后 `("step_end", ...)`
 - 整体 try/except：异常 → `("error", {"detail": str(e)})`
 
-- [ ] **Step 4: 自己写 `main.py` 的 SSE 接口**（项目 2 同款姿势）
+- [x] **Step 4: 自己写 `main.py` 的 SSE 接口**（项目 2 同款姿势）
 
 ```python
 class ChatStreamRequest(BaseModel):
@@ -428,17 +428,17 @@ async def chat_stream(req: ChatStreamRequest):
 
 （需要 `from fastapi.responses import StreamingResponse`、`from pydantic import BaseModel`、`from agent.trace import stream_trace`）
 
-- [ ] **Step 5: 跑测试确认绿**
+- [x] **Step 5: 跑测试确认绿**
 
 Expected: 1 passed（约 15 秒，真实 LLM）
 
-- [ ] **Step 6: 全量回归 + commit**
+- [x] **Step 6: 全量回归 + commit**
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
-Expected: 13 passed（Task 2 的 10 + Task 3 的 2 + 本 Task 的 1）。然后 commit：
+Expected: 11 passed（Task 2 的 8 + Task 3 的 2 + 本 Task 的 1）。然后 commit：
 
 ```bash
 git add backend/agent/trace.py backend/main.py backend/tests/test_chat_stream.py; git commit -m "feat: trace 事件流 + SSE 接口"
