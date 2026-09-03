@@ -473,11 +473,11 @@ git add backend/agent/trace.py backend/main.py backend/tests/test_chat_stream.py
   - `steps` 状态提升在 `App.vue`（ref 数组），以 prop 下传给 ChatView（写）与 TracePanel（读）——数组是共享引用，ChatView 只做 push/改属性，纪律与项目 2 同款
   - `ChatView` 是事件消费的唯一入口：把 SSE 事件翻译成状态变更（Task 6 只补翻译表实现；TracePanel 只接收 props，不碰 fetch）
 
-- [ ] **Step 1: 写 `api/index.ts`**（项目 2 同款 fetch + ReadableStream 解析 SSE）
+- [x] **Step 1: 写 `api/index.ts`**（项目 2 同款 fetch + ReadableStream 解析 SSE）
 
 接口如上。要点：`fetch("/api/chat/stream", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({question})})`；`resp.body.getReader()` + `TextDecoder` 按 `\n\n` 分帧，帧内解析 `event:` / `data:` 行后调 `onEvent(name, JSON.parse(data))`；流结束调 `onDone()`；异常调 `onError()`。（小心不可见字符坑：手动打的字符串里的连字符务必确认是 ASCII）
 
-- [ ] **Step 2: 写 `ChatView.vue`**（左区聊天）
+- [x] **Step 2: 写 `ChatView.vue`**（左区聊天）
 
 - props：`defineProps<{ steps: TraceStep[] }>()`（Task 6 用它做事件翻译；本 Task 只在"新对话"时清空）
 - 状态：`messages: {role: "user"|"assistant", content: string}[]`、`input`、`loading`
@@ -485,7 +485,7 @@ git add backend/agent/trace.py backend/main.py backend/tests/test_chat_stream.py
 - "新对话"按钮：清空 messages + `steps.splice(0, steps.length)`（props 数组是共享引用，清空即生效）
 - 样式从简：卡片式消息列表 + 底部输入框，加载中禁用发送
 
-- [ ] **Step 3: `App.vue` 双区布局**
+- [x] **Step 3: `App.vue` 双区布局**
 
 ```vue
 <script setup lang="ts">
@@ -507,7 +507,7 @@ const steps = ref<TraceStep[]>([]);
 
 grid 两列（左 5 右 7 或接近），面板区标题"Agent 执行链路"。TracePanel 骨架 = `defineProps<{ steps: TraceStep[] }>()` + 标题占位，渲染留到 Task 6。
 
-- [ ] **Step 4: 验收（手动行为清单 + build）**
+- [x] **Step 4: 验收（手动行为清单 + build）**
 
 后端起 uvicorn（`cd backend; .\.venv\Scripts\python.exe -m uvicorn main:app --port 8000`），前端 `npm run dev`，浏览器 http://localhost:5173：
 
@@ -536,7 +536,7 @@ git add frontend; git commit -m "feat: 前端聊天区 + SSE 事件消费入口"
   - `TraceStep` 类型：Task 5 已落地 `frontend/src/types.ts`，本 Task 直接消费
   - `TracePanel` props: `{ steps: TraceStep[] }`，纯展示组件
 
-- [ ] **Step 1: ChatView 里写事件 → steps 的翻译逻辑**（在 Task 5 的 TODO 处实现）
+- [x] **Step 1: ChatView 里写事件 → steps 的翻译逻辑**（在 Task 5 的 TODO 处实现）
 
 | 事件 | 对 steps 的操作 |
 |---|---|
@@ -550,7 +550,7 @@ git add frontend; git commit -m "feat: 前端聊天区 + SSE 事件消费入口"
 | `done` | loading=false |
 | `error` | 聊天区显示错误，面板当前条目标 error |
 
-- [ ] **Step 2: 实现 `TracePanel.vue`**
+- [x] **Step 2: 实现 `TracePanel.vue`**
 
 - 左列时间线：竖线 + 每步一个圆点徽章（thinking=running 时三点呼吸动画；tool=running 时转圈/齿轮）
 - 每步卡片：徽章 + 标题 + 状态色（running 蓝 / done 绿 / error 红）
@@ -558,7 +558,7 @@ git add frontend; git commit -m "feat: 前端聊天区 + SSE 事件消费入口"
 - `chartOption` 存在时：卡片内嵌 `<div ref>` 渲染 ECharts——`echarts.init` + `setOption(chartOption)` + `ResizeObserver` 自适应（你大屏经验直接复用）；组件卸载 `dispose`
 - 纯 props 展示，不写 fetch、不写全局状态
 
-- [ ] **Step 3: 验收（手动行为清单 + build）**
+- [x] **Step 3: 验收（手动行为清单 + build）**
 
 后端 + 前端都起，发送「查合肥未来 4 天天气，画温度柱状图，算平均温度，写出行建议」：
 
