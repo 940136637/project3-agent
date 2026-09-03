@@ -64,10 +64,64 @@ function handleEvent(name: string, data: any) {
         role: "assistant",
         content: data.detail,
       });
+      const step = props.steps[props.steps.length - 1];
+      if (step) {
+        step.status = "error";
+      }
       break;
     // Task 6: 事件驱动 steps
     // step_start / thinking / tool_call / tool_result / chart / step_start / step_end 在此处理更新props.steps
+    case "step_start": {
+      props.steps.push({
+        id: data.step_idx,
+        type: data.type,
+        status: "running",
+        title: data.type === "thinking" ? "思考中" : "",
+        detail: "",
+        args: undefined,
+        ok: undefined,
+        chartOption: undefined,
+      });
+      break;
+    }
+    case "thinking": {
+      const step = props.steps[props.steps.length - 1];
+      if (step) {
+        step.detail += data.text;
+      }
+      break;
+    }
+    case "tool_call": {
+      const step = props.steps[props.steps.length - 1];
+      if (step) {
+        step.title = data.tool_name;
+        step.args = JSON.stringify(data.args, null, 2);
+      }
+      break;
+    }
+    case "tool_result": {
+      const step = props.steps[props.steps.length - 1];
+      if (step) {
+        step.detail = data.result;
+        step.ok = data.ok;
+        step.status = data.ok ? "done" : "error"
+      }
+      break;
+    }
+    case "chart": {
+      const step = props.steps[props.steps.length - 1];
+      if (step) {
+        step.chartOption = data.option;
+      }
+      break;
+    }
+    case "step_end": {
+      const step = props.steps.find(s => s.id === data.step_idx);
+      if (step && step.status !== "error") {
+           step.status = "done"
+      }
   }
+}
 }
 
 function onDone() {
