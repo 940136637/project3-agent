@@ -67,16 +67,16 @@
 |---|---|---|
 | `start` | `{}` | 握手（v1 无历史持久化，不需要 thread_id） |
 | `step_start` | `{step_idx, type: "thinking"\|"tool"}` | 一个步骤开始（时间线新条目） |
-| `thinking` | `{text}` | agent 节点 LLM 思考文本流式 |
-| `tool_call` | `{tool_name, args}` | 模型决定调用工具 |
-| `tool_result` | `{tool_name, result, ok}` | 工具执行结果（ok=false 即错误观察） |
-| `chart` | `{option}` | chart_generate 产物，前端直接 setOption |
+| `thinking` | `{step_idx, text}` | agent 节点 LLM 思考文本流式 |
+| `tool_call` | `{step_idx, tool_name, args}` | 模型决定调用工具 |
+| `tool_result` | `{step_idx, tool_name, result, ok}` | 工具执行结果（ok=false 即错误观察） |
+| `chart` | `{step_idx, option}` | chart_generate 产物，前端直接 setOption |
 | `step_end` | `{step_idx}` | 步骤结束 |
 | `answer` | `{text}` | 最终回答全文（非流式——面板是主角，思考流式、回答整段） |
 | `done` | `{}` | 结束 |
 | `error` | `{detail}` | 异常兜底（GraphRecursionError 等），前端提示用户 |
 
-实现方式：`graph.astream_events(version="v2")`（项目 2 已验证姿势）——`on_chat_model_stream` 给思考 token 流；`on_chat_model_end` 的 `tool_calls` 给 tool_call 步骤边界、`on_tool_end` 给工具结果；节点归属用事件 `metadata["langgraph_node"]` 识别；chart 事件 = trace 层检测到工具名为 `chart_generate` 且结果合法时把 JSON 解析成 option 转发。
+实现方式：`graph.astream_events(version="v2")`（项目 2 已验证姿势）——`on_chat_model_stream` 给思考 token 流；`on_chat_model_end` 的 `tool_calls` 给 tool_call 步骤边界、`on_tool_end` 给工具结果；节点归属用事件 `metadata["langgraph_node"]` 识别；chart 事件 = trace 层检测到工具名为 `chart_generate` 且结果合法时把 JSON 解析成 option 转发。**步骤事件全部按 `step_idx` 路由（协议自描述，消费方无状态）**：工具步 id 在 `on_chat_model_end` 依次入 FIFO 队列、`on_tool_end` 时 `pop(0)` 领走——支撑"一轮多 tool_calls"（模型并行调用工具，Task 7 联调实证）。
 
 ## 5. 前端设计
 
@@ -114,14 +114,15 @@ SSE 消费用 fetch + ReadableStream 手动解析（POST 无法用 EventSource�
 - **工具单测**：chart_generate（option 结构断言：有 title/xAxis/series 且数值对）、calculator（四则运算 + 非法表达式拒绝 + `__import__` 等注入尝试被拒）、weather_query（httpx mock 高德响应，不真打接口）
 - **图集成测试**：真实 LLM 跑一条最短指令（"算一下 23 加 5"），断言工具 calculator 被调用且最终答案含 28
 - **SSE 契约测试**：httpx 流式消费，断言事件序列完整（start→…→done）
+- **trace 协议单测**：伪造 astream_events 事件流（含双工具并行轮，不烧 LLM），断言每步事件按 step_idx 路由、step_start/step_end 一一配对
 
 ### 7.2 验收清单（对齐学习计划）
 
 1. 一句话指令「查合肥未来 4 天天气，画温度柱状图，算平均温度，写出行建议」→ 面板看到 4 步、3 种工具、ReAct 循环 3 轮 ✅
 2. 柱状图正确渲染在面板内（ECharts option 由 chart_generate 确定性生成）✅
 3. 链路面板实时点亮（思考动画→工具齿轮→结果→图表），截图/GIF 存档 ✅
-4. 演示录屏 GIF 进 README；docker compose up 一键启动 ✅
-5. 推 GitHub（网络恢复后）✅
+4. 演示录屏 GIF 进 README；docker compose up 一键启动（Task 8）
+5. 推 GitHub（网络恢复后）（Task 8）
 
 ## 8. 部署与交付
 

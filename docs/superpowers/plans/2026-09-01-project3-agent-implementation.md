@@ -578,11 +578,11 @@ git add frontend screenshots; git commit -m "feat: Agent 执行链路可视化�
 
 ### Task 7: 联调验收（spec 7.2 前三项）
 
-**Files:** 无代码改动（改 bug 除外）；产出 `screenshots/1-5.png`
+**Files:** 无代码改动（改 bug 除外）；产出 `screenshots/2-6.png`（Task 6 截图已占 1.png，顺延编号）
 
 **Interfaces:** 无新增
 
-- [ ] **Step 1: 双端起服**
+- [x] **Step 1: 双端起服**
 
 ```powershell
 cd backend; .\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
@@ -592,29 +592,31 @@ cd backend; .\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
 cd frontend; npm run dev
 ```
 
-- [ ] **Step 2: 用户执行四步演示 + 截图**
+- [x] **Step 2: 用户执行四步演示 + 截图**
 
 浏览器发「查合肥未来 4 天天气，画温度柱状图，算平均温度，写出行建议」，在以下时机各截一张（另存为到 `screenshots/`）：
 
-1. `1.png`：回答完成后整体画面（左聊天右面板全貌）
-2. `2.png`：面板第一轮——思考步骤 running（动画中）
-3. `3.png`：weather_query 工具卡片展开（参数 + 返回 JSON 可见）
-4. `4.png`：chart_generate 卡片 + 内嵌柱状图
-5. `5.png`：最终 done 全绿时间线（四步徽章全 done）
+1. `2.png`：面板第一轮——思考步骤 running（动画中）
+2. `3.png`：weather_query 工具卡片展开（参数 + 返回 JSON 可见）
+3. `4.png`：chart_generate 卡片 + 内嵌柱状图
+4. `5.png`：回答完成后整体画面（左聊天右面板全貌）
+5. `6.png`：最终 done 全绿时间线（全部徽章 done）
 
-- [ ] **Step 3: Claude 服务器取证复核**（读磁盘截图验真 + httpx 复验）
+- [x] **Step 3: Claude 服务器取证复核**（读磁盘截图验真 + httpx 复验）
 
 - 5 张截图真存进 `screenshots/`（文件大小正常、内容与时机描述一致）
 - httpx 脚本复跑同一条指令，逐帧断言：事件序列完整（start→…→done）、`tool_call` 三个工具名全部到场、`chart` 事件 option 含 series、`answer` 含"建议"
 - 面板状态机与事件序列一致性抽查（step_start/step_end 数量配对）
 
-- [ ] **Step 4: 验收清单勾选 + commit**
+- [x] **Step 4: 验收清单勾选 + commit**
 
-spec 7.2 第 1-3 项勾选。commit：
+spec 7.2 第 1-3 项勾选（4-5 项撤销预勾，归 Task 8）。commit：
 
 ```bash
 git add screenshots docs; git commit -m "docs: 联调验收截图（四步演示）"
 ```
+
+**联调现场抓到的 bug（2026-09-07）——trace 协议按 id 路由升级**：真实演示中 DeepSeek 第二轮一口气并行调了 chart_generate + calculator 两个工具（模型自主决策，拦不住），当场打破"一轮一工具"的隐式假设，两处代码中招：① trace.py 的 `step_end` 用"最后分配的 step_idx"——chart 步的 step_end 关成了 calculator 步 ② ChatView 的 tool_result/chart 改"最后一条目"——chart 的返回 JSON 与柱状图全串进 calculator 卡片，chart_generate 卡永远转圈（首轮截图 2-6.png 拍进了 bug 画面，已作废重截）。修复（用户写实现、Claude 给测试）：后端 tool_call 的 step_idx 依次入 FIFO 队列、`on_tool_end` 时 `pop(0)` 领走对应 id；thinking/tool_call/tool_result/chart 事件 data 全部带 step_idx；前端五类事件统一 `find(s => s.id === data.step_idx)` 按 id 路由——协议自描述、消费方无状态。新增 `tests/test_trace.py`（4 用例，伪造 astream_events 含双工具并行轮，不烧 LLM）。修复后：全量 15 passed、build 绿、httpx 复验再次触发并行且换序（calculator 先于 chart_generate），6 步全部配对无串门、answer 含建议、截图重截验真。**教训**：SSE 契约测试只数"事件名序列+配对数量"，测不出字段级串门——协议单测必须按 step_idx 分组断言每一步的完整事件链。
 
 ---
 
