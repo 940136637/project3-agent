@@ -121,15 +121,15 @@ SSE 消费用 fetch + ReadableStream 手动解析（POST 无法用 EventSource�
 1. 一句话指令「查合肥未来 4 天天气，画温度柱状图，算平均温度，写出行建议」→ 面板看到 4 步、3 种工具、ReAct 循环 3 轮 ✅
 2. 柱状图正确渲染在面板内（ECharts option 由 chart_generate 确定性生成）✅
 3. 链路面板实时点亮（思考动画→工具齿轮→结果→图表），截图/GIF 存档 ✅
-4. 演示录屏 GIF 进 README；docker compose up 一键启动（Task 8）
+4. docker compose up 一键启动 ✅；演示 GIF 跳过（用户不会录屏，2026-09-07 决定）——README 主图用截图 7.png、标注「待补」，面试口径「现场演示 + 截图存档」
 5. 推 GitHub（网络恢复后）（Task 8）
 
 ## 8. 部署与交付
 
 - Docker Compose 前后端（项目 2 全套姿势复用：多阶段构建、.dockerignore、registry mirror 提示、单 worker）
 - `.env` 含 `DEEPSEEK_API_KEY` + `AMAP_API_KEY`（高德 key 注册：高德开放平台控制台免费申请 Web 服务 key）
-- README：架构图 + 演示 GIF + 三步启动 + 面试口径附录
-- 演示 GIF：本地 Docker 演示时用 Xbox Game Bar（Win+G）录屏 30 秒，截取四步链路
+- README：架构图 + 演示截图（7.png 主图，GIF 待补）+ 三步启动 + 面试口径附录
+- 演示 GIF：已跳过（2026-09-07 用户决定，不会录屏）；现场演示口径替代
 
 ## 9. 面试口径（每个组件的"为什么"）
 

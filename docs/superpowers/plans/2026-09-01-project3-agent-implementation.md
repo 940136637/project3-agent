@@ -624,15 +624,15 @@ git add screenshots docs; git commit -m "docs: 联调验收截图（四步演示
 
 **Files:**
 - Create: `backend/Dockerfile`、`frontend/Dockerfile`、`docker-compose.yml`、`backend/.dockerignore`、`frontend/.dockerignore`、`README.md`
-- 产出：`screenshots/6.png`（Docker 环境验证截图）、`docs/demo.gif`（录屏 GIF）
+- 产出：`screenshots/7.png`（Docker 环境验证截图，6.png 已被 Task 7 占用顺延）；`docs/demo.gif` 已跳过（见 Step 3）
 
 **Interfaces:** 无新增；compose 环境变量 `DEEPSEEK_API_KEY`、`AMAP_API_KEY` 从根 `.env` 注入（项目 2 同款）
 
-- [ ] **Step 1: 写 Dockerfile ×2 + .dockerignore ×2**（项目 2 姿势照搬）
+- [x] **Step 1: 写 Dockerfile ×2 + .dockerignore ×2**（项目 2 姿势照搬）
 
 backend：`python:3.14-slim`，多阶段不必要（无编译产物），`COPY requirements.txt` → pip install → `COPY . .` → `CMD uvicorn main:app`；frontend：build 阶段 node + `npm run build`，运行阶段 nginx 配 `/api/` 反代。两个 `.dockerignore` 务必排除 `.venv/`、`node_modules/`、`data/`、`dist/`（项目 2 血泪教训：无 dockerignore 会把 venv 打进去）。
 
-- [ ] **Step 2: 写 docker-compose.yml + 构建起服**
+- [x] **Step 2: 写 docker-compose.yml + 构建起服**
 
 ```yaml
 services:
@@ -650,9 +650,7 @@ services:
 
 `docker compose up -d --build` → 浏览器 http://localhost 发四步指令 → 验收全过 → 截 `6.png`。
 
-- [ ] **Step 3: 录演示 GIF**（README 主图）
-
-Docker 环境下用 Xbox Game Bar（Win+G）录屏 30 秒：从输入指令到面板四步走完 + 图表渲染。用工具（如 ScreenToGif，免费）转成 gif 存 `docs/demo.gif`（控制在 ~5MB 内，太长就截关键帧）。
+- [x] **Step 3: 录演示 GIF —— 已跳过（2026-09-07 用户决定）**：不会录屏（Xbox Game Bar 用不来），尝试给出 Win11 截图工具录屏方案后用户仍选择跳过。README 主图改用静态截图（7.png），演示 GIF 标注「待补」；面试口径改为「现场演示 + 截图存档」。spec 7.2 第 4 项按"部分完成"记录。
 
 - [ ] **Step 4: README**（Claude 起草 + 用户 quiz 通关，项目 2 分工模式）
 
