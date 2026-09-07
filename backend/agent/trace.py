@@ -14,7 +14,7 @@ async def stream_trace(question: str):
     yield ("start", {})
 
     step_idx = 0
-
+    pending_steps = []
     try:
         async for ev in build_graph().astream_events(
             {"messages": [("user", question)]},
@@ -32,7 +32,7 @@ async def stream_trace(question: str):
                 # content 非空才 yield ("thinking", {"text": ...})
                 chunk = ev["data"]["chunk"]
                 if chunk.content:
-                    yield ("thinking", {"text": chunk.content})
+                    yield ("thinking", {"text": chunk.content, "step_idx": step_idx})
             elif name == "on_chat_model_end" and node == "agent":
                 chunk = ev["data"]["output"]
                 tool_calls = chunk.tool_calls
@@ -42,12 +42,14 @@ async def stream_trace(question: str):
                 if tool_calls:
                     for tc in tool_calls:
                         step_idx += 1
+                        pending_steps.append(step_idx)
                         yield ("step_start", {"step_idx": step_idx, "type": "tool"})
                         yield (
                             "tool_call",
                             {
                                 "tool_name": tc["name"],
                                 "args": tc["args"],
+                                "step_idx": step_idx,
                             },
                         )
                 #   无 tool_calls → 关思考步 + yield ("answer", {"text": ...})
@@ -56,15 +58,21 @@ async def stream_trace(question: str):
             elif name == "on_tool_end":
                 # tool_result；chart_generate 且 ok → json.loads 后 yield ("chart", {...})
                 # 最后关工具步
+                step_id = pending_steps.pop(0)
                 result = ev["data"]["output"]
                 ok = "失败" not in result
                 yield (
                     "tool_result",
-                    {"tool_name": ev["name"], "result": result, "ok": ok},
+                    {
+                        "tool_name": ev["name"],
+                        "result": result,
+                        "ok": ok,
+                        "step_idx": step_id,
+                    },
                 )
                 if ev["name"] == "chart_generate" and ok:
-                    yield ("chart", {"option": json.loads(result)})
-                yield ("step_end", {"step_idx": step_idx})
+                    yield ("chart", {"option": json.loads(result), "step_idx": step_id})
+                yield ("step_end", {"step_idx": step_id})
         yield ("done", {})
     except Exception as e:
         yield ("error", {"detail": str(e)})

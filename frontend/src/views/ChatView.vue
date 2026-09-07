@@ -85,14 +85,14 @@ function handleEvent(name: string, data: any) {
       break;
     }
     case "thinking": {
-      const step = props.steps[props.steps.length - 1];
+      const step = props.steps.find(s => s.id === data.step_idx);
       if (step) {
         step.detail += data.text;
       }
       break;
     }
     case "tool_call": {
-      const step = props.steps[props.steps.length - 1];
+      const step = props.steps.find(s => s.id === data.step_idx);
       if (step) {
         step.title = data.tool_name;
         step.args = JSON.stringify(data.args, null, 2);
@@ -100,7 +100,7 @@ function handleEvent(name: string, data: any) {
       break;
     }
     case "tool_result": {
-      const step = props.steps[props.steps.length - 1];
+      const step = props.steps.find(s => s.id === data.step_idx);
       if (step) {
         step.detail = data.result;
         step.ok = data.ok;
@@ -109,7 +109,7 @@ function handleEvent(name: string, data: any) {
       break;
     }
     case "chart": {
-      const step = props.steps[props.steps.length - 1];
+      const step = props.steps.find(s => s.id === data.step_idx);
       if (step) {
         step.chartOption = data.option;
       }
