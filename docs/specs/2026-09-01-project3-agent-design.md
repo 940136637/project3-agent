@@ -122,7 +122,7 @@ SSE 消费用 fetch + ReadableStream 手动解析（POST 无法用 EventSource�
 2. 柱状图正确渲染在面板内（ECharts option 由 chart_generate 确定性生成）✅
 3. 链路面板实时点亮（思考动画→工具齿轮→结果→图表），截图/GIF 存档 ✅
 4. docker compose up 一键启动 ✅；演示 GIF 跳过（用户不会录屏，2026-09-07 决定）——README 主图用截图 7.png、标注「待补」，面试口径「现场演示 + 截图存档」
-5. 推 GitHub（网络恢复后）（Task 8）
+5. 推 GitHub ✅（2026-09-08 已推 origin main，quiz 通关后 README 定稿）
 
 ## 8. 部署与交付
 

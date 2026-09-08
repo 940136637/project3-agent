@@ -10,7 +10,7 @@
 
 - **可视化执行链路面板**（本项目差异化核心）：步骤时间线 + 状态徽章（思考呼吸动画 / 工具齿轮 / 成功绿 / 失败红）+ 工具参数与返回折叠查看 + ECharts 图表**内嵌卡片渲染**。面板数据全部来自图执行本身的事件流，不是前端事后拼装——这就是"可观测"。
 - **手搭 StateGraph**：`agent ⇄ tools` 双节点 + 条件边循环，不用 `create_agent` 黑盒预置——节点粒度可控、每个执行事件可拿来做可视化。
-- **trace 事件协议按 `step_idx` 路由**：所有步骤事件自带头部门牌号，前端按 id 路由、与事件到达顺序解耦——**实测扛住模型一轮并行调用多个工具**（联调时 DeepSeek 一次叫了 chart_generate + calculator 两个工具，协议按 id 路由后零串门）。
+- **trace 事件协议按 `step_idx` 路由**：所有步骤事件自带头部门牌号，前端按 id 路由、与事件到达顺序解耦——**实测扛住模型一轮回复同时叫多个工具**（联调时 DeepSeek 一次叫了 chart_generate + calculator，两个工具步同时开着，协议按 id 路由后零串门）。
 - **calculator 用 ast 白名单解析**，绝不 eval，防代码注入。
 - **chart_generate 确定性生成**：ECharts option 由代码构造，杜绝 LLM 产出非法配置。
 
@@ -62,6 +62,9 @@ cd frontend; npm install; npm run dev
 
 # 测试
 cd backend; .\.venv\Scripts\python.exe -m pytest tests/ -v
+
+# 调试：打印 astream_events 原始事件流（排查 trace 协议用）
+cd backend; .\.venv\Scripts\python.exe probe_events.py
 ```
 
 ## 演示
@@ -70,7 +73,7 @@ cd backend; .\.venv\Scripts\python.exe -m pytest tests/ -v
 
 > 查合肥未来 4 天天气，画温度柱状图，算平均温度，写出行建议
 
-期望行为：链路面板依次点亮 **思考 → weather_query → 思考 → chart_generate → 思考 → calculator → 思考**，柱状图内嵌渲染在 chart_generate 卡片里，最终聊天区给出含出行建议的回答。步骤数量与工具顺序由模型自主决策（可能一轮并行调多个工具、也可能换序）——协议按 `step_idx` 路由，任意形状都不串门。
+期望行为：链路面板依次点亮 **思考 → weather_query → 思考 → chart_generate → 思考 → calculator → 思考**，柱状图内嵌渲染在 chart_generate 卡片里，最终聊天区给出含出行建议的回答。步骤数量与工具顺序由模型自主决策（可能一轮回复同时叫多个工具、也可能换序）——协议按 `step_idx` 路由，任意形状都不串门。
 
 ## trace 事件协议（SSE 单流）
 
@@ -103,7 +106,7 @@ cd backend; .\.venv\Scripts\python.exe -m pytest tests/ -v
 |---|---|
 | 手搭 StateGraph | "create_agent 是黑盒预置，手搭让我控制节点粒度、能拿到每个节点的执行事件做可视化" |
 | Function Calling | "模型不是被 if 控制——把工具 schema 喂给模型，模型自主输出 tool_call，框架执行回传，这就是 Function Calling" |
-| 按 id 路由 | "联调时模型一轮并行调了两个工具，暴露了'最后一条目'定位的串门 bug；升级为事件自带 step_idx 按 id 路由，协议自描述、与到达顺序解耦，任意并行形状都不错位" |
+| 按 id 路由 | "联调时模型一轮回复同时叫了两个工具（两个工具步同时开着），暴露了'最后一条目'定位的串门 bug；升级为事件自带 step_idx 按 id 路由，协议自描述、与到达顺序解耦，任意调用形状都不错位" |
 | chart_generate 确定性 | "图表配置由代码确定性生成，不依赖模型输出——杜绝 LLM 生成非法 ECharts option" |
 | calculator 安全 | "用 ast 白名单解析而不是 eval，防代码注入" |
 | 失败重试 | "工具失败返回错误文本进观察环节，模型自主决定重试或放弃——ReAct 的天然容错；recursion_limit 兜底防死循环" |

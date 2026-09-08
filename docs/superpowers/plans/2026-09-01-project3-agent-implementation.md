@@ -652,11 +652,11 @@ services:
 
 - [x] **Step 3: 录演示 GIF —— 已跳过（2026-09-07 用户决定）**：不会录屏（Xbox Game Bar 用不来），尝试给出 Win11 截图工具录屏方案后用户仍选择跳过。README 主图改用静态截图（7.png），演示 GIF 标注「待补」；面试口径改为「现场演示 + 截图存档」。spec 7.2 第 4 项按"部分完成"记录。
 
-- [ ] **Step 4: README**（Claude 起草 + 用户 quiz 通关，项目 2 分工模式）
+- [x] **Step 4: README**（Claude 起草 + 用户 quiz 通关，项目 2 分工模式）— ✅ 2026-09-08 quiz 三问通关（① 并行多工具串门 bug 与 step_idx 按 id 路由 ② 手搭 StateGraph 架构与可观测 ③ chart_generate 确定性 + calculator ast 白名单）；"并行"口径按实测校准为"一轮回复同时叫多个工具、多个工具步同时开着"
 
 结构：项目介绍（一句话+演示 GIF）→ 核心亮点（可视化链路面板）→ 架构图 → 技术栈 → 本地开发步骤 → Docker 启动步骤 → trace 事件协议表 → 验收清单 → 面试口径（spec 第 9 节摘要）。quiz 三问过关才算完成。
 
-- [ ] **Step 5: 推 GitHub**
+- [x] **Step 5: 推 GitHub** — ✅ 2026-09-08：quiz 通关后 README 定稿（口径校准 + probe_events.py 调试脚本说明入 README）+ spec 7.2 第 5 项勾选，`git push origin main` 完成（HEAD d2add11 已同步远程）。项目 3 收官。
 
 GitHub 网页建 `project3-agent` 仓库（不要 README 初始化）→ `git remote add origin <你的地址>` → `git push -u origin main`（网络抽风就重试，看到 remote 输出才算成功；项目 2 的 push 也可能还在挂起，一并处理）。
 
