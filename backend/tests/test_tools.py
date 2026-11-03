@@ -4,6 +4,9 @@ import httpx
 
 from agent.tools import calculator, chart_generate, weather_query
 
+# 伪造的响应要带 request：httpx 0.28 的 raise_for_status 在 request 为空时会抛 RuntimeError
+REQ = httpx.Request("GET", "https://restapi.amap.com/v3/weather/weatherInfo")
+
 
 class TestCalculator:
     def test_addition(self):
@@ -101,7 +104,7 @@ class TestWeatherQuery:
         monkeypatch.setattr(
             httpx,
             "get",
-            lambda *a, **kw: httpx.Response(200, json=self.FAKE),
+            lambda *a, **kw: httpx.Response(200, json=self.FAKE, request=REQ),
         )
         r = weather_query.invoke({"city": "合肥", "days": 2})
         data = json.loads(r)
@@ -113,7 +116,7 @@ class TestWeatherQuery:
         monkeypatch.setattr(
             httpx,
             "get",
-            lambda *a, **kw: httpx.Response(200, json=self.FAKE),
+            lambda *a, **kw: httpx.Response(200, json=self.FAKE, request=REQ),
         )
         r = weather_query.invoke({"city": "合肥", "days": 99})
         assert len(json.loads(r)["forecasts"]) <= 4
@@ -125,3 +128,57 @@ class TestWeatherQuery:
         monkeypatch.setattr(httpx, "get", boom)
         r = weather_query.invoke({"city": "合肥", "days": 2})
         assert r.startswith("天气查询失败")
+
+    def test_5xx_retried_then_succeeds(self, monkeypatch):
+        calls = {"n": 0}
+
+        def flaky(*a, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(500, request=REQ)
+            return httpx.Response(200, json=self.FAKE, request=REQ)
+
+        monkeypatch.setattr(httpx, "get", flaky)
+        r = weather_query.invoke({"city": "合肥", "days": 2})
+        assert json.loads(r)["city"] == "合肥"
+        assert calls["n"] == 2  # 500 → 重试 → 成功
+
+    def test_5xx_exhausted_reports_retry_count(self, monkeypatch):
+        calls = {"n": 0}
+
+        def always_500(*a, **kw):
+            calls["n"] += 1
+            return httpx.Response(500, request=REQ)
+
+        monkeypatch.setattr(httpx, "get", always_500)
+        r = weather_query.invoke({"city": "合肥", "days": 2})
+        assert r.startswith("天气查询失败")
+        assert "已重试2次" in r  # weather_max_retries=2，如实报告
+        assert calls["n"] == 3
+
+    def test_4xx_not_retried(self, monkeypatch):
+        calls = {"n": 0}
+
+        def bad_key(*a, **kw):
+            calls["n"] += 1
+            return httpx.Response(403, request=REQ)
+
+        monkeypatch.setattr(httpx, "get", bad_key)
+        r = weather_query.invoke({"city": "合肥", "days": 2})
+        assert r.startswith("天气查询失败")
+        assert "已重试0次" in r  # 4xx 重试无意义，立即失败
+        assert calls["n"] == 1
+
+    def test_timeout_retried_then_succeeds(self, monkeypatch):
+        calls = {"n": 0}
+
+        def flaky(*a, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise httpx.TimeoutException("第一次超时")
+            return httpx.Response(200, json=self.FAKE, request=REQ)
+
+        monkeypatch.setattr(httpx, "get", flaky)
+        r = weather_query.invoke({"city": "合肥", "days": 2})
+        assert json.loads(r)["city"] == "合肥"
+        assert calls["n"] == 2
