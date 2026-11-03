@@ -1,25 +1,29 @@
 """trace.py 事件协议单元测试（伪造 astream_events 流，不调真实 LLM）
 
-覆盖两种工具轮形状：
-  单工具轮：一轮思考只调一个工具（Task 4 原形状）
-  双工具轮：一轮思考并行调两个工具（Task 7 联调抓到的真实模型行为）
+覆盖三种工具轮形状：
+  单工具轮：一轮思考只调一个工具
+  双工具轮：一轮思考并行调两个工具（真实模型行为）
+  超时轮：tools 节点没产出 ToolMessage（工具超时）→ 兜底按失败收口
 
-协议要求（按 id 路由升级版）：
+协议要求（T1 修订版）：
   - 每个 step_start 的 step_idx 唯一，且恰好有一个 step_end 配对
   - thinking / tool_call / tool_result / chart 事件 data 都带 step_idx，
     且等于自己宿主步骤的 id
+  - 工具步在 tools 节点结束时按 tool_call_id 认领结果，与完成顺序无关
   - 每个工具步的事件顺序：tool_call → tool_result → (chart) → step_end
 """
 
 import asyncio
 import json
-from types import SimpleNamespace
+import types
+
+from langchain_core.messages import ToolMessage
 
 from agent import trace
 
 
 def chunk(content="", tool_calls=None):
-    return SimpleNamespace(content=content, tool_calls=tool_calls or [])
+    return types.SimpleNamespace(content=content, tool_calls=tool_calls or [])
 
 
 CHART_OPTION = json.dumps(
@@ -27,30 +31,51 @@ CHART_OPTION = json.dumps(
     ensure_ascii=False,
 )
 
-# 事件脚本：(event, name或node, data)
+TOOL_CALLS_R1 = [{"name": "calculator", "args": {"expression": "23+5"}, "id": "call-1"}]
+TOOL_CALLS_R2 = [
+    {
+        "name": "chart_generate",
+        "args": {
+            "chart_type": "bar",
+            "title": "温度",
+            "categories": ["a"],
+            "series": [{"name": "温度", "data": [1]}],
+        },
+        "id": "call-2",
+    },
+    {"name": "calculator", "args": {"expression": "1+2"}, "id": "call-3"},
+]
+
+# 事件脚本：(event, name, data)。on_chain_end 的 data.output 是节点返回值
 SCRIPT = [
     # 第 1 轮：思考 → 调 calculator（单工具）
     ("on_chat_model_start", "agent", {"chunk": chunk()}),
     ("on_chat_model_stream", "agent", {"chunk": chunk("算一下")}),
-    ("on_chat_model_end", "agent",
-     {"output": chunk("", [{"name": "calculator", "args": {"expression": "23+5"}}])}),
-    ("on_tool_end", "calculator", {"output": "结果：28"}),
-    # 第 2 轮：思考 → 并行调 chart_generate + calculator（双工具，bug 场景）
+    ("on_chat_model_end", "agent", {"output": chunk("", TOOL_CALLS_R1)}),
+    ("on_chain_end", "tools",
+     {"output": {"messages": [ToolMessage(content="结果：28", tool_call_id="call-1")]}}),
+    # 第 2 轮：思考 → 并行调 chart_generate + calculator（消息顺序故意打乱，验证按 id 认领）
     ("on_chat_model_start", "agent", {"chunk": chunk()}),
     ("on_chat_model_stream", "agent", {"chunk": chunk("画图并计算")}),
-    ("on_chat_model_end", "agent",
-     {"output": chunk("", [
-         {"name": "chart_generate",
-          "args": {"chart_type": "bar", "title": "温度",
-                   "categories": ["a"], "series": [{"name": "温度", "data": [1]}]}},
-         {"name": "calculator", "args": {"expression": "1+2"}},
-     ])}),
-    ("on_tool_end", "chart_generate", {"output": CHART_OPTION}),
-    ("on_tool_end", "calculator", {"output": "结果：3"}),
+    ("on_chat_model_end", "agent", {"output": chunk("", TOOL_CALLS_R2)}),
+    ("on_chain_end", "tools",
+     {"output": {"messages": [
+         ToolMessage(content="结果：3", tool_call_id="call-3"),
+         ToolMessage(content=CHART_OPTION, tool_call_id="call-2"),
+     ]}}),
     # 第 3 轮：思考 → 直接回答
     ("on_chat_model_start", "agent", {"chunk": chunk()}),
     ("on_chat_model_stream", "agent", {"chunk": chunk("组织回答")}),
     ("on_chat_model_end", "agent", {"output": chunk("最终答案")}),
+]
+
+# 超时轮：工具调用发出去了，但 tools 节点没有产出 ToolMessage
+TIMEOUT_SCRIPT = [
+    ("on_chat_model_start", "agent", {"chunk": chunk()}),
+    ("on_chat_model_end", "agent", {"output": chunk("", TOOL_CALLS_R1)}),
+    ("on_chain_end", "tools", {"output": {"messages": []}}),
+    ("on_chat_model_start", "agent", {"chunk": chunk()}),
+    ("on_chat_model_end", "agent", {"output": chunk("工具没结果，我直接算")}),
 ]
 
 
@@ -71,9 +96,9 @@ class FakeGraph:
             }
 
 
-def collect(monkeypatch):
+def collect(monkeypatch, script=SCRIPT):
     """跑一遍 stream_trace，收集全部 (事件名, data) 元组"""
-    monkeypatch.setattr(trace, "build_graph", lambda: FakeGraph(SCRIPT))
+    monkeypatch.setattr(trace, "build_graph", lambda: FakeGraph(script))
     out = []
 
     async def run():
@@ -128,3 +153,15 @@ class TestStreamTraceProtocol:
         events = collect(monkeypatch)
         answers = [d["text"] for name, d in events if name == "answer"]
         assert answers == ["最终答案"]
+
+    def test_tool_timeout_is_closed_as_failure(self, monkeypatch):
+        """tools 节点没产出 ToolMessage（超时）→ 下一轮思考前按失败收口，面板不悬挂"""
+        events = collect(monkeypatch, TIMEOUT_SCRIPT)
+        results = [d for name, d in events if name == "tool_result"]
+        assert len(results) == 1
+        assert results[0]["ok"] is False
+        assert results[0]["result"].startswith("工具执行失败")
+        # 每个 step_start 都有 step_end 配对
+        starts = [d["step_idx"] for name, d in events if name == "step_start"]
+        ends = [d["step_idx"] for name, d in events if name == "step_end"]
+        assert sorted(starts) == sorted(ends)

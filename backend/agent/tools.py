@@ -1,10 +1,20 @@
+import ast
 import json
+import operator
 import os
+
 import httpx
 from dotenv import load_dotenv
 from langchain_core.tools import tool
-import ast
-import operator
+from tenacity import (
+    retry,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+from agent.resilience import get_config, is_5xx_error
 
 load_dotenv()
 
@@ -65,14 +75,40 @@ def chart_generate(chart_type: str, title: str, categories: list, series: list) 
 @tool
 def weather_query(city: str, days: int) -> str:
     """查询城市未来几天天气预报。days 取值范围 1-4。"""
+    cfg = get_config()
+
+    # 重试只包住"一次 HTTP 请求"这一层：
+    #   连接失败/超时 → 网络抖动，可重试
+    #   5xx → 服务端临时故障，可重试
+    #   4xx/业务错误 → 重试无意义，立即失败（见 _fetch 外层的 status 校验）
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(cfg.weather_max_retries + 1),
+        wait=wait_exponential(
+            multiplier=1,
+            min=cfg.retry_wait_min_seconds,
+            max=cfg.retry_wait_max_seconds,
+        ),
+        retry=retry_if_exception_type(
+            (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError)
+        )
+        | retry_if_exception(is_5xx_error),
+    )
+    def _fetch(params: dict) -> httpx.Response:
+        resp = httpx.get(
+            "https://restapi.amap.com/v3/weather/weatherInfo",
+            params=params,
+            timeout=cfg.weather_http_timeout_seconds,
+        )
+        resp.raise_for_status()  # 4xx/5xx 都抛 HTTPStatusError，5xx 由重试谓词接住
+        return resp
+
     try:
         # 钳制范围 1~4
         days = min(max(days, 1), 4)
         api_key = os.getenv("AMAP_API_KEY")
         params = {"key": api_key, "city": city, "extensions": "all"}
-        resp = httpx.get(
-            "https://restapi.amap.com/v3/weather/weatherInfo", params=params, timeout=10
-        )
+        resp = _fetch(params)
         data = resp.json()
         # 高德status=1才代表成功
         if data.get("status") != "1":
@@ -83,7 +119,9 @@ def weather_query(city: str, days: int) -> str:
         output = {"city": city, "forecasts": take}
         return json.dumps(output, ensure_ascii=False)
     except Exception as e:
-        return f"天气查询失败：{e}"
+        # 如实报告实际重试次数（tenacity 把统计挂在被装饰函数上），不谎报"已重试"
+        attempts = _fetch.statistics.get("attempt_number", 1)
+        return f"天气查询失败(已重试{attempts - 1}次):{e}"
 
 
 TOOLS = [weather_query, chart_generate, calculator]

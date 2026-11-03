@@ -29,13 +29,42 @@ flowchart LR
     S --> P[链路面板<br/>时间线 + 图表内嵌]
 ```
 
+## 健壮性设计（T1：超时 · 重试 · 降级）
+
+一次请求里有三层外部依赖，各自有独立的失败模式，所以分三层兜底：
+
+| 层 | 失败模式 | 策略 | 代码位置 |
+|---|---|---|---|
+| LLM 调用 | 网络抖动 / 限流 / 5xx / 卡住 | 单次超时 60s，可恢复错误指数退避重试 2 次（最多 3 次尝试），耗尽后上抛交给 SSE `error` | `agent/resilience.py` `llm_retry` |
+| 工具执行 | 工具卡死 / 模型编造工具名 | 每个工具统一 `asyncio.wait_for` 超时 60s，超时/未知工具降级成「错误观察」回给模型，链路不死 | `agent/graph.py` `tools_node` |
+| 工具内部 HTTP | 连接失败 / 超时 / 5xx / 4xx | 只对可恢复错误重试；4xx 与业务错误立即失败，失败消息如实报告「已重试 N 次」 | `agent/tools.py` `weather_query` |
+
+几个刻意的取舍：
+
+- **关闭 SDK 内建重试**（`max_retries=0`）：否则 SDK 重试 × tenacity 重试 = 次数相乘，故障时反而放大压力。
+- **不做随机抖动（jitter）**：单实例演示，确定性优先、测试稳定；高并发场景应加 jitter 防惊群。
+- **超时 ≠ 取消**：`asyncio.to_thread` 杀不掉线程，超时只是「不再等待」，所以工具内部必须有自己的 HTTP 超时，否则线程会泄漏。
+- **面板以节点输出为准**：工具超时后线程可能迟到补发 `on_tool_end`，trace 改为在 tools 节点结束时按 `tool_call_id` 认领结果，避免把一个已超时的步骤标成成功。
+
+配置全部走环境变量（不填用默认值，写错直接启动失败）：
+
+| 变量 | 默认 | 含义 |
+|---|---|---|
+| `LLM_TIMEOUT_SECONDS` | 60 | LLM 单次调用超时 |
+| `LLM_MAX_RETRIES` | 2 | LLM 重试次数（总尝试 = 次数 + 1） |
+| `TOOL_TIMEOUT_SECONDS` | 60 | 单个工具执行超时 |
+| `WEATHER_HTTP_TIMEOUT_SECONDS` | 10 | 天气 HTTP 单次请求超时 |
+| `WEATHER_MAX_RETRIES` | 2 | 天气 HTTP 重试次数 |
+| `RETRY_WAIT_MIN_SECONDS` | 1.0 | 指数退避起点 |
+| `RETRY_WAIT_MAX_SECONDS` | 10.0 | 指数退避封顶 |
+
 ## 技术栈
 
 | 层 | 技术 |
 |---|---|
 | 后端 | Python 3.14 · FastAPI · LangGraph 1.2.11（手搭图）· langchain-openai（deepseek-chat）· httpx |
 | 前端 | Vue 3 · TypeScript · Vite · ECharts（图表内嵌） |
-| 测试 | pytest（15 个用例：工具单测 / 图集成测试 / SSE 契约测试 / trace 协议单测） |
+| 测试 | pytest（35 个用例：工具单测 / 图集成测试 / SSE 契约测试 / trace 协议单测 / 超时重试降级离线用例） |
 | 部署 | Docker Compose（nginx 托管前端并反代 `/api`，SSE 关缓冲） |
 
 ## 快速开始（Docker）
@@ -110,6 +139,11 @@ cd backend; .\.venv\Scripts\python.exe probe_events.py
 | chart_generate 确定性 | "图表配置由代码确定性生成，不依赖模型输出——杜绝 LLM 生成非法 ECharts option" |
 | calculator 安全 | "用 ast 白名单解析而不是 eval，防代码注入" |
 | 失败重试 | "工具失败返回错误文本进观察环节，模型自主决定重试或放弃——ReAct 的天然容错；recursion_limit 兜底防死循环" |
+| 超时分三层 | "LLM 60s、工具 60s、HTTP 10s：超时不是防慢，是防一个依赖把线程和连接池占死，最后整条链路陪葬" |
+| 指数退避 | "1s、2s、4s 封顶 10s；固定间隔重试在下游故障时会形成同步脉冲，退避把重试压力摊开" |
+| 重试边界 | "只重试可恢复错误（连接/超时/429/5xx），4xx 和业务错误立即失败；SDK 内建重试关掉，避免两层层重试叠加" |
+| 降级 vs 熔断 | "降级是这次请求给替代结果（错误观察交给模型兜底），熔断是一段时间内对下游快速失败；T1 只做降级" |
+| 超时≠取消 | "wait_for 只是不再等待，线程杀不掉；所以工具内部必须有 HTTP 超时兜底，否则线程泄漏" |
 | 可观测 | "链路面板数据全部来自图执行本身的事件流，不是前端事后拼装" |
 | SSE 选型 | "单向事件流用 SSE 足够，比 WebSocket 更简单且代理友好；nginx 关 proxy_buffering 即可" |
 | 不做项 | "v1 不做 Planner 任务分解、多工具并行、Memory 持久化——YAGNI，场景不需要；这是 v2 路线" |
